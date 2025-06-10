@@ -49,12 +49,18 @@ data = response.json()
 def ts_to_datetime(ts):
     return datetime.datetime.fromtimestamp(ts)
 
+account_overview = []
 transactions = []
 
 # Account name and balance for all accounts
 for account in data["accounts"]:
     acct_name = account["name"]
-    balance_date = ts_to_datetime(account["balance-date"])
+    account_overview.append({
+        "acct_name": account["name"],
+        "date": ts_to_datetime(account["balance-date"]),
+        "balance": account["balance"]
+    })
+    
 
     # Info about each transaction within each account
     for trans in account.get("transactions", []):
@@ -63,14 +69,23 @@ for account in data["accounts"]:
             "date": ts_to_datetime(trans["posted"]).date(),
             "description": trans["description"],
             "amount": trans["amount"],
-            "category": trans.get("category", None)
+            "payee": trans["payee"],
+            "memo": trans["memo"],
+            "transacted_at": ts_to_datetime(trans["transacted_at"]).date()
         })
 
 # Export to csv
-df = pd.DataFrame(transactions)
+acct_df = pd.DataFrame(account_overview)
+trans_df = pd.DataFrame(transactions)
 
-filename = f"data/all_trans/all_transactions_{today.strftime('%Y-%m-%d')}.csv"
-df.to_csv(filename, index=False)
+acct_filename = f"data/account_balances.csv"
+trans_filename = f"data/all_trans/all_transactions_{today.strftime('%Y-%m-%d')}.csv"
+
+acct_file_exists = os.path.isfile(acct_filename)
+
+acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
+trans_df.to_csv(trans_filename, index=False)
 
 # Confirmation message
-print(f" Successfully exported {len(df)} transactions to {filename}")
+print(f" Successfully exported account balances for {len(acct_df)} accounts to {acct_filename}")
+print(f" Successfully exported {len(trans_df)} transactions to {trans_filename}")
