@@ -57,8 +57,9 @@ for account in data["accounts"]:
     acct_name = account["name"]
     account_overview.append({
         "acct_name": account["name"],
-        "date": ts_to_datetime(account["balance-date"]),
-        "balance": account["balance"]
+        "date_updated": ts_to_datetime(account["balance-date"]),
+        "balance": account["balance"],
+        "date_run": datetime.datetime(today.year, today.month, today.day)
     })
     
 
@@ -66,6 +67,7 @@ for account in data["accounts"]:
     for trans in account.get("transactions", []):
         transactions.append({
             "account": acct_name,
+            "id": trans["id"],
             "date": ts_to_datetime(trans["posted"]).date(),
             "description": trans["description"],
             "amount": trans["amount"],
@@ -74,18 +76,35 @@ for account in data["accounts"]:
             "transacted_at": ts_to_datetime(trans["transacted_at"]).date()
         })
 
-# Export to csv
+# Turn our pulled data into pandas dfs
 acct_df = pd.DataFrame(account_overview)
 trans_df = pd.DataFrame(transactions)
 
+# Import prior data
 acct_filename = f"data/account_balances.csv"
-trans_filename = f"data/all_trans/all_transactions_{today.strftime('%Y-%m-%d')}.csv"
+trans_log_filename = f"data/trans_log.csv"
 
+old_trans_log_df = pd.read_csv(trans_log_filename)
+
+# Find rows from our new trans file that are not already in the transaction log
+new_transactions = trans_df[~trans_df['id'].isin(old_trans_log_df['id'])]
+
+# Merge old trans log and new transactions and sort by date
+if len(new_transactions)>0:
+    new_trans_log_df = pd.concat([old_trans_log_df, new_transactions])
+    new_trans_log_df['transacted_at'] = pd.to_datetime(new_trans_log_df['transacted_at'])
+    new_trans_log_df = new_trans_log_df.sort_values("transacted_at")
+
+if len(new_transactions)==0:
+    new_trans_log_df = old_trans_log_df
+
+# Save as csv
 acct_file_exists = os.path.isfile(acct_filename)
+trans_log_exists = os.path.isfile(trans_log_filename)
 
 acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
-trans_df.to_csv(trans_filename, index=False)
+new_trans_log_df.to_csv(trans_log_filename, index=False)
 
 # Confirmation message
 print(f" Successfully exported account balances for {len(acct_df)} accounts to {acct_filename}")
-print(f" Successfully exported {len(trans_df)} transactions to {trans_filename}")
+print(f" Successfully exported {len(new_transactions)} new transactions to {trans_log_filename}")
