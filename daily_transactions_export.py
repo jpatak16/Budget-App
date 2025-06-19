@@ -35,8 +35,7 @@ end_unix_ts = int(time.mktime(end_dt.timetuple()))
 # Fetch data from SimpleFIN
 response = requests.get(url, auth=(username, password), 
                         params={"start-date": start_unix_ts,
-                                "end-date": end_unix_ts,
-                                "pending": 1}
+                                "end-date": end_unix_ts}
                         )
 
 # Display error is we fail to feth the accounts
@@ -68,11 +67,9 @@ for account in data["accounts"]:
         transactions.append({
             "account": acct_name,
             "id": trans["id"],
-            "date": ts_to_datetime(trans["posted"]).date(),
             "description": trans["description"],
             "amount": trans["amount"],
             "payee": trans["payee"],
-            "memo": trans["memo"],
             "transacted_at": ts_to_datetime(trans["transacted_at"]).date()
         })
 
@@ -82,9 +79,9 @@ trans_df = pd.DataFrame(transactions)
 
 # Import prior data
 acct_filename = f"data/account_balances.csv"
-trans_log_filename = f"data/trans_log.csv"
+trans_log_filename = f"data/trans_log.xlsx"
 
-old_trans_log_df = pd.read_csv(trans_log_filename)
+old_trans_log_df = pd.read_excel(trans_log_filename)
 
 # Find rows from our new trans file that are not already in the transaction log
 new_transactions = trans_df[~trans_df['id'].isin(old_trans_log_df['id'])]
@@ -98,12 +95,12 @@ if len(new_transactions)>0:
 if len(new_transactions)==0:
     new_trans_log_df = old_trans_log_df
 
-# Save as csv
+# Save
 acct_file_exists = os.path.isfile(acct_filename)
 trans_log_exists = os.path.isfile(trans_log_filename)
 
-acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
-new_trans_log_df.to_csv(trans_log_filename, index=False)
+#acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
+new_trans_log_df.to_excel(trans_log_filename, index=False)
 
 # Confirmation message
 print(f" Successfully exported account balances for {len(acct_df)} accounts to {acct_filename}")
