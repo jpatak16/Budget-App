@@ -4,6 +4,8 @@ import time
 import datetime
 import pandas as pd
 from dotenv import load_dotenv
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 
 # Load variables from .env
 load_dotenv()
@@ -81,6 +83,9 @@ trans_df = pd.DataFrame(transactions)
 acct_filename = f"data/account_balances.csv"
 trans_log_filename = f"data/trans_log.xlsx"
 
+trans_log_wb = load_workbook(trans_log_filename)
+trans_log_ws = trans_log_wb['Sheet1']
+
 old_trans_log_df = pd.read_excel(trans_log_filename)
 
 # Find rows from our new trans file that are not already in the transaction log
@@ -89,18 +94,43 @@ new_transactions = trans_df[~trans_df['id'].isin(old_trans_log_df['id'])]
 # Merge old trans log and new transactions and sort by date
 if len(new_transactions)>0:
     new_trans_log_df = pd.concat([old_trans_log_df, new_transactions])
-    new_trans_log_df['transacted_at'] = pd.to_datetime(new_trans_log_df['transacted_at'])
-    new_trans_log_df = new_trans_log_df.sort_values("transacted_at")
+    new_trans_log_df['transacted_at'] = pd.to_datetime(new_trans_log_df['transacted_at']).dt.date
 
-if len(new_transactions)==0:
-    new_trans_log_df = old_trans_log_df
+    # Clear existing highlights from all rows
+    no_fill = PatternFill(fill_type=None)
+    for row in trans_log_ws.iter_rows():
+        for cell in row:
+            cell.fill = no_fill
+
+    # Find which rows to highlight
+    start_row = trans_log_ws.max_row + 1
+    end_row = start_row + len(new_transactions) - 1
+
+    # Replace worksheet with updated data
+    trans_log_ws.delete_rows(1, trans_log_ws.max_row)
+    trans_log_ws.append(new_trans_log_df.columns.tolist())
+    for row in new_trans_log_df.itertuples(index=False):
+        trans_log_ws.append(row)
+
+    # Highlight rows that were added the last time the trans log was updated
+    new_row_fill = PatternFill(fill_type="solid", start_color="FFFF00", end_color="FFFF00")
+    for row in trans_log_ws.iter_rows(min_row=start_row, max_row=end_row):
+        for cell in row:
+            cell.fill = new_row_fill
+
+# Set column widths for the xlsx file
+trans_log_ws.column_dimensions['A'].width = 33
+trans_log_ws.column_dimensions['B'].width = 40
+trans_log_ws.column_dimensions['C'].width = 69
+trans_log_ws.column_dimensions['D'].width = 9
+trans_log_ws.column_dimensions['E'].width = 29
+trans_log_ws.column_dimensions['F'].width = 12
 
 # Save
 acct_file_exists = os.path.isfile(acct_filename)
-trans_log_exists = os.path.isfile(trans_log_filename)
 
-#acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
-new_trans_log_df.to_excel(trans_log_filename, index=False)
+acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
+trans_log_wb.save(trans_log_filename)
 
 # Confirmation message
 print(f" Successfully exported account balances for {len(acct_df)} accounts to {acct_filename}")
