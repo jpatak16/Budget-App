@@ -72,7 +72,9 @@ for account in data["accounts"]:
             "description": trans["description"],
             "amount": trans["amount"],
             "payee": trans["payee"],
-            "transacted_at": ts_to_datetime(trans["transacted_at"]).date()
+            "transacted_at": ts_to_datetime(trans["transacted_at"]).date(),
+            "category":"",
+            "subcategory":""
         })
 
 # Turn our pulled data into pandas dfs
@@ -125,6 +127,9 @@ trans_log_ws.column_dimensions['C'].width = 69
 trans_log_ws.column_dimensions['D'].width = 9
 trans_log_ws.column_dimensions['E'].width = 29
 trans_log_ws.column_dimensions['F'].width = 12
+trans_log_ws.column_dimensions['G'].width = 14
+trans_log_ws.column_dimensions['H'].width = 16
+
 
 # Save
 acct_file_exists = os.path.isfile(acct_filename)
@@ -132,6 +137,20 @@ acct_file_exists = os.path.isfile(acct_filename)
 acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
 trans_log_wb.save(trans_log_filename)
 
+# Test to see if any accounts on SimpleFIN need attention
+status_check = pd.DataFrame(account_overview)
+
+status_check["diff"] = (
+    (status_check["date_run"] - status_check["date_updated"])
+    .abs()
+    .dt.total_seconds() / 86400
+)
+
+needs_attention = (status_check["diff"] > 3).sum()
+
 # Confirmation message
 print(f" Successfully exported account balances for {len(acct_df)} accounts to {acct_filename}")
 print(f" Successfully exported {len(new_transactions)} new transactions to {trans_log_filename}")
+
+if needs_attention > 0:
+    print(f"{needs_attention} account(s) need attention (last update > 3 days ago).")
