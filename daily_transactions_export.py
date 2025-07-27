@@ -4,8 +4,6 @@ import time
 import datetime
 import pandas as pd
 from dotenv import load_dotenv
-from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -54,6 +52,13 @@ if response.status_code != 200:
     raise Exception(f"Failed to fetch accounts: {response.status_code} - {response.text}")
 
 data = response.json()
+
+# Manually handle some abnormally/incorrectly behaving accounts
+data["accounts"] = [
+    {**a, "name": "Health Savings Account (JP)"} if a["id"] == os.getenv("hsa_jp_act_id") else a
+    for a in data["accounts"]
+    if a["id"] != os.getenv("baylor_act_id")
+]
 
 # Helper function to convert timestamps into datetime
 def ts_to_datetime(ts):
