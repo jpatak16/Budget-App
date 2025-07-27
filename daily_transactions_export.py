@@ -6,6 +6,15 @@ import pandas as pd
 from dotenv import load_dotenv
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+# Define the scope for Google Sheets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+# Authenticate using the service account
+creds = ServiceAccountCredentials.from_json_keyfile_name("budget-app-467122-8956d11132d3.json", scope)
+client = gspread.authorize(creds)
 
 # Load variables from .env
 load_dotenv()
@@ -60,7 +69,7 @@ for account in data["accounts"]:
         "acct_name": account["name"],
         "date_updated": ts_to_datetime(account["balance-date"]),
         "balance": account["balance"],
-        "date_run": datetime.datetime(today.year, today.month, today.day)
+        "date_run": today.date()
     })
     
 
@@ -81,64 +90,37 @@ for account in data["accounts"]:
 acct_df = pd.DataFrame(account_overview)
 trans_df = pd.DataFrame(transactions)
 
-# Import prior data
-acct_filename = f"data/account_balances.csv"
-trans_log_filename = f"data/trans_log.xlsx"
+acct_df['date_run'] = pd.to_datetime(acct_df['date_run']).dt.strftime('%m/%d/%Y')
+acct_df['date_updated'] = pd.to_datetime(acct_df['date_updated']).dt.strftime('%m/%d/%Y %H:%M')
 
-trans_log_wb = load_workbook(trans_log_filename)
-trans_log_ws = trans_log_wb['Sheet1']
+# Open Google Sheets
+acct_sheet = client.open("JHP-Account-Balances").sheet1
+trans_sheet = client.open("JHP-Transaction-Log").sheet1
 
-old_trans_log_df = pd.read_excel(trans_log_filename)
+# Get all values from the sheet
+old_trans_data = trans_sheet.get_all_values()
+
+# Convert to DataFrame
+old_trans_log_df = pd.DataFrame(old_trans_data[1:], columns=old_trans_data[0])
 
 # Find rows from our new trans file that are not already in the transaction log
 new_transactions = trans_df[~trans_df['id'].isin(old_trans_log_df['id'])]
 
-# Merge old trans log and new transactions and sort by date
 if len(new_transactions)>0:
-    new_trans_log_df = pd.concat([old_trans_log_df, new_transactions])
-    new_trans_log_df['transacted_at'] = pd.to_datetime(new_trans_log_df['transacted_at']).dt.date
+    
+    # Prepare only new rows for appending
+    new_rows = new_transactions.astype(str).values.tolist()
 
-    # Clear existing highlights from all rows
-    no_fill = PatternFill(fill_type=None)
-    for row in trans_log_ws.iter_rows():
-        for cell in row:
-            cell.fill = no_fill
+    # Append new rows to Google Sheet
+    trans_sheet.append_rows(new_rows, value_input_option="USER_ENTERED")
 
-    # Find which rows to highlight
-    start_row = trans_log_ws.max_row + 1
-    end_row = start_row + len(new_transactions) - 1
-
-    # Replace worksheet with updated data
-    trans_log_ws.delete_rows(1, trans_log_ws.max_row)
-    trans_log_ws.append(new_trans_log_df.columns.tolist())
-    for row in new_trans_log_df.itertuples(index=False):
-        trans_log_ws.append(row)
-
-    # Highlight rows that were added the last time the trans log was updated
-    new_row_fill = PatternFill(fill_type="solid", start_color="FFFF00", end_color="FFFF00")
-    for row in trans_log_ws.iter_rows(min_row=start_row, max_row=end_row):
-        for cell in row:
-            cell.fill = new_row_fill
-
-# Set column widths for the xlsx file
-trans_log_ws.column_dimensions['A'].width = 33
-trans_log_ws.column_dimensions['B'].width = 40
-trans_log_ws.column_dimensions['C'].width = 69
-trans_log_ws.column_dimensions['D'].width = 9
-trans_log_ws.column_dimensions['E'].width = 29
-trans_log_ws.column_dimensions['F'].width = 12
-trans_log_ws.column_dimensions['G'].width = 14
-trans_log_ws.column_dimensions['H'].width = 16
-
-
-# Save
-acct_file_exists = os.path.isfile(acct_filename)
-
-acct_df.to_csv(acct_filename, mode='a', index=False, header=not acct_file_exists)
-trans_log_wb.save(trans_log_filename)
+new_acct_rows = acct_df.astype(str).values.tolist()
+acct_sheet.append_rows(new_acct_rows, value_input_option="USER_ENTERED")
 
 # Test to see if any accounts on SimpleFIN need attention
 status_check = pd.DataFrame(account_overview)
+status_check["date_run"] = pd.to_datetime(status_check["date_run"], errors="coerce")
+status_check["date_updated"] = pd.to_datetime(status_check["date_updated"], errors="coerce")
 
 status_check["diff"] = (
     (status_check["date_run"] - status_check["date_updated"])
@@ -149,8 +131,8 @@ status_check["diff"] = (
 needs_attention = (status_check["diff"] > 3).sum()
 
 # Confirmation message
-print(f" Successfully exported account balances for {len(acct_df)} accounts to {acct_filename}")
-print(f" Successfully exported {len(new_transactions)} new transactions to {trans_log_filename}")
+print(f" Successfully exported account balances for {len(acct_df)} accounts to JHP-Account-Balances")
+print(f" Successfully exported {len(new_transactions)} new transactions to JHP-Transaction-Log")
 
 if needs_attention > 0:
     print(f"{needs_attention} account(s) need attention (last update > 3 days ago).")
