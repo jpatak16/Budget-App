@@ -55,7 +55,9 @@ data = response.json()
 
 # Manually handle some abnormally/incorrectly behaving accounts
 data["accounts"] = [
-    {**a, "name": "Health Savings Account (JP)"} if a["id"] == os.getenv("hsa_jp_act_id") else a
+    {**a, "name": "Health Savings Account (JP)"} if a["id"] == os.getenv("hsa_jp_act_id") 
+    else {**a, "name": "Bilt Mastercard"} if a["id"] == os.getenv("bilt_act_id")
+    else a
     for a in data["accounts"]
     if a["id"] != os.getenv("baylor_act_id")
 ]
@@ -122,22 +124,7 @@ if len(new_transactions)>0:
 new_acct_rows = acct_df.astype(str).values.tolist()
 acct_sheet.append_rows(new_acct_rows, value_input_option="USER_ENTERED")
 
-# Test to see if any accounts on SimpleFIN need attention
-status_check = pd.DataFrame(account_overview)
-status_check["date_run"] = pd.to_datetime(status_check["date_run"], errors="coerce")
-status_check["date_updated"] = pd.to_datetime(status_check["date_updated"], errors="coerce")
-
-status_check["diff"] = (
-    (status_check["date_run"] - status_check["date_updated"])
-    .abs()
-    .dt.total_seconds() / 86400
-)
-
-needs_attention = (status_check["diff"] > 3).sum()
-
 # Confirmation message
 print(f" Successfully exported account balances for {len(acct_df)} accounts to JHP-Account-Balances")
 print(f" Successfully exported {len(new_transactions)} new transactions to JHP-Transaction-Log")
-
-if needs_attention > 0:
-    print(f"{needs_attention} account(s) need attention (last update > 3 days ago).")
+print(data.get("errors"))
